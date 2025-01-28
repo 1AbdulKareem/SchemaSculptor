@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scratch-Like Workflow Designer</title>
+  <script src="https://unpkg.com/gojs/release/go-debug.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      height: 100vh;
+    }
+
+    #palette {
+      width: 200px;
+      background: #f4f4f4;
+      padding: 10px;
+      border-right: 2px solid #ddd;
+    }
+
+    #palette h3 {
+      font-size: 18px;
+      margin-bottom: 10px;
+    }
+
+    #workflow-container {
+      flex: 1;
+      position: relative;
+    }
+
+    #workflow-editor {
+      width: 100%;
+      height: 100%;
+    }
+
+    .block {
+      background: #007bff;
+      color: white;
+      padding: 10px;
+      margin-bottom: 10px;
+      border-radius: 8px;
+      text-align: center;
+      cursor: grab;
+    }
+
+    .block:hover {
+      background: #0056b3;
+    }
+  </style>
+</head>
+<body>
+  <!-- Palette -->
+  <div id="palette">
+    <h3>Blocks</h3>
+    <div class="block" draggable="true" data-type="state">State</div>
+    <div class="block" draggable="true" data-type="transition">Transition</div>
+    <div class="block" draggable="true" data-type="logic">Logic</div>
+  </div>
+
+  <!-- Workflow Editor -->
+  <div id="workflow-container">
+    <div id="workflow-editor"></div>
+  </div>
+
+  <script>
+    const $ = go.GraphObject.make;
+
+    // Initialize the Diagram
+    const myDiagram = $(go.Diagram, "workflow-editor", {
+      "undoManager.isEnabled": true,
+      layout: $(go.ForceDirectedLayout),
+    });
+
+    // Node Template
+    myDiagram.nodeTemplate = $(
+      go.Node, "Auto",
+      $(go.Shape, "RoundedRectangle", { fill: "lightblue" }),
+      $(go.TextBlock, { margin: 5 }, new go.Binding("text", "key"))
+    );
+
+    // Link Template
+    myDiagram.linkTemplate = $(
+      go.Link,
+      { routing: go.Link.AvoidsNodes, corner: 10 },
+      $(go.Shape),
+      $(go.Shape, { toArrow: "Standard" })
+    );
+
+    // Allow users to drag items from the palette
+    const myPalette = document.getElementById('palette');
+    myPalette.addEventListener('dragstart', (event) => {
+      event.dataTransfer.setData('text', event.target.dataset.type);
+    });
+
+    // Handle drop events on the diagram
+    myDiagram.addDiagramListener('ExternalObjectsDropped', (event) => {
+      const dropLocation = event.subject.first().location;
+
+      const dataType = event.diagram.lastInput.modelData;
+      let key;
+
+      switch (dataType) {
+        case 'state':
+          key = prompt("Enter State Name:");
+          if (key) myDiagram.model.addNodeData({ key });
+          break;
+
+        case 'transition':
+          alert("Connect two states by dragging a line between them!");
+          break;
+
+        case 'logic':
+          key = "Logic Block"; // Placeholder for custom logic blocks
+          myDiagram.model.addNodeData({ key });
+          break;
+      }
+    });
+
+    // Initialize Diagram Model
+    myDiagram.model = new go.GraphLinksModel([], []);
+
+    // Drop Listener for adding nodes
+    document.getElementById('workflow-container').addEventListener('dragover', (event) => event.preventDefault());
+    document.getElementById('workflow-container').addEventListener('drop', (event) => {
+      event.preventDefault();
+      const type = event.dataTransfer.getData('text');
+      const dropPoint = myDiagram.lastInput.documentPoint;
+      let newNodeData = { key: type };
+
+      // Create nodes based on block type
+      if (type === "state") {
+        newNodeData.key = prompt("Enter State Name:");
+      } else if (type === "transition") {
+        newNodeData.key = "Transition";
+      } else if (type === "logic") {
+        newNodeData.key = "Logic";
+      }
+
+      myDiagram.model.addNodeData(newNodeData);
+    });
+  </script>
+</body>
+</html>
