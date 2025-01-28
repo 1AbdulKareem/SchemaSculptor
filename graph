@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Graph Tool</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/sweetalert2@11.4.25/dist/sweetalert2.min.css" rel="stylesheet">
+  <style>
+    .canvas {
+      width: 100%;
+      height: 600px;
+      border: 1px solid #ccc;
+      position: relative;
+      overflow: hidden;
+    }
+    .state {
+      width: 100px;
+      height: 100px;
+      border-radius: 50%;
+      background-color: #4caf50;
+      color: white;
+      text-align: center;
+      line-height: 100px;
+      position: absolute;
+      cursor: pointer;
+    }
+    .state.selected {
+      background-color: #f44336;
+    }
+    .line {
+      stroke: #333;
+      stroke-width: 2;
+    }
+    .line-number {
+      font-size: 12px;
+      fill: black;
+      text-anchor: middle;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container mt-4">
+  <h1>Graph Workflow Editor</h1>
+
+  <!-- Buttons -->
+  <div class="mb-3">
+    <button id="addState" class="btn btn-primary">Add State</button>
+    <button id="exportGraph" class="btn btn-success">Export Graph</button>
+    <button id="importGraph" class="btn btn-warning">Import Graph</button>
+  </div>
+
+  <!-- Graph Canvas -->
+  <div class="canvas" id="canvas"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.4.25/dist/sweetalert2.min.js"></script>
+<script>
+  let stateCount = 0;
+  let states = [];
+  let connections = [];
+  const canvas = document.getElementById('canvas');
+  const addStateButton = document.getElementById('addState');
+  const exportButton = document.getElementById('exportGraph');
+  const importButton = document.getElementById('importGraph');
+
+  // Add a new state (circle)
+  addStateButton.addEventListener('click', () => {
+    stateCount++;
+    const state = document.createElement('div');
+    state.classList.add('state');
+    state.textContent = 'State ' + stateCount;
+    state.id = 'state' + stateCount;
+    state.style.left = `${Math.random() * 500}px`;
+    state.style.top = `${Math.random() * 500}px`;
+
+    // Make state draggable
+    state.addEventListener('mousedown', (e) => {
+      let offsetX = e.clientX - state.offsetLeft;
+      let offsetY = e.clientY - state.offsetTop;
+
+      const onMouseMove = (moveEvent) => {
+        state.style.left = `${moveEvent.clientX - offsetX}px`;
+        state.style.top = `${moveEvent.clientY - offsetY}px`;
+      };
+
+      const onMouseUp = () => {
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+      };
+
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
+    });
+
+    // Add the state to the canvas
+    canvas.appendChild(state);
+    states.push(state);
+  });
+
+  // Function to draw connections (lines)
+  function drawConnection(fromState, toState) {
+    const x1 = fromState.offsetLeft + fromState.offsetWidth / 2;
+    const y1 = fromState.offsetTop + fromState.offsetHeight / 2;
+    const x2 = toState.offsetLeft + toState.offsetWidth / 2;
+    const y2 = toState.offsetTop + toState.offsetHeight / 2;
+
+    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    line.setAttribute('x1', x1);
+    line.setAttribute('y1', y1);
+    line.setAttribute('x2', x2);
+    line.setAttribute('y2', y2);
+    line.classList.add('line');
+
+    const lineNumber = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    lineNumber.setAttribute('x', (x1 + x2) / 2);
+    lineNumber.setAttribute('y', (y1 + y2) / 2);
+    lineNumber.setAttribute('class', 'line-number');
+    lineNumber.textContent = connections.length + 1;
+
+    let svgContainer = canvas.querySelector('svg');
+    if (!svgContainer) {
+      svgContainer = document.createElement('svg');
+      svgContainer.setAttribute('width', '100%');
+      svgContainer.setAttribute('height', '100%');
+      canvas.appendChild(svgContainer);
+    }
+
+    svgContainer.appendChild(line);
+    svgContainer.appendChild(lineNumber);
+
+    connections.push({ from: fromState.id, to: toState.id, id: connections.length + 1 });
+  }
+
+  // Export graph as adjacency list
+  exportButton.addEventListener('click', () => {
+    const adjacencyList = {};
+
+    states.forEach(state => {
+      adjacencyList[state.id] = [];
+    });
+
+    connections.forEach(conn => {
+      adjacencyList[conn.from].push(conn.to);
+    });
+
+    const adjacencyListString = JSON.stringify(adjacencyList, null, 2);
+    navigator.clipboard.writeText(adjacencyListString).then(() => {
+      Swal.fire({
+        title: 'Graph Exported',
+        text: 'Adjacency list copied to clipboard!',
+        icon: 'success',
+      });
+    });
+  });
+
+  // Import graph from adjacency list
+  importButton.addEventListener('click', () => {
+    Swal.fire({
+      title: 'Import Graph',
+      input: 'textarea',
+      inputLabel: 'Paste adjacency list here',
+      inputPlaceholder: 'Paste the adjacency list JSON',
+      inputAttributes: {
+        'aria-label': 'Paste adjacency list here',
+        'aria-describedby': 'basic-addon2'
+      },
+      showCancelButton: true,
+      confirmButtonText: 'Import',
+      cancelButtonText: 'Cancel',
+      showLoaderOnConfirm: true,
+      preConfirm: (inputValue) => {
+        try {
+          const graphData = JSON.parse(inputValue);
+          states = [];
+          connections = [];
+          canvas.innerHTML = '';  // Clear current canvas
+          stateCount = 0;
+
+          Object.keys(graphData).forEach((stateId) => {
+            stateCount++;
+            const state = document.createElement('div');
+            state.classList.add('state');
+            state.textContent = stateId;
+            state.id = stateId;
+            state.style.left = `${Math.random() * 500}px`;
+            state.style.top = `${Math.random() * 500}px`;
+
+            state.addEventListener('mousedown', (e) => {
+              let offsetX = e.clientX - state.offsetLeft;
+              let offsetY = e.clientY - state.offsetTop;
+
+              const onMouseMove = (moveEvent) => {
+                state.style.left = `${moveEvent.clientX - offsetX}px`;
+                state.style.top = `${moveEvent.clientY - offsetY}px`;
+              };
+
+              const onMouseUp = () => {
+                document.removeEventListener('mousemove', onMouseMove);
+                document.removeEventListener('mouseup', onMouseUp);
+              };
+
+              document.addEventListener('mousemove', onMouseMove);
+              document.addEventListener('mouseup', onMouseUp);
+            });
+
+            canvas.appendChild(state);
+            states.push(state);
+
+            // Draw connections
+            graphData[stateId].forEach((connectedStateId) => {
+              const fromState = document.getElementById(stateId);
+              const toState = document.getElementById(connectedStateId);
+              drawConnection(fromState, toState);
+            });
+          });
+
+          Swal.fire({
+            title: 'Graph Imported',
+            text: 'Graph has been successfully imported!',
+            icon: 'success',
+          });
+        } catch (error) {
+          Swal.fire({
+            title: 'Error!',
+            text: 'Invalid adjacency list format.',
+            icon: 'error',
+          });
+        }
+      }
+    });
+  });
+
+</script>
+</body>
+</html>
