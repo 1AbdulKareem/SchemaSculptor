@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Monaco SQL Editor</title>
+
+  <!-- Monaco Editor -->
+  <script src="https://cdn.jsdelivr.net/npm/monaco-editor/min/vs/loader.js"></script>
+
+  <style>
+    .editor-container {
+      margin: 20px 0;
+    }
+    .editor-box {
+      height: 300px;
+      border: 1px solid #ccc;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Monaco SQL Editor with Autocompletion</h1>
+
+  <div class="editor-container">
+    <h2>Monaco Editor (SQL)</h2>
+    <div id="monaco-editor" class="editor-box"></div>
+  </div>
+
+  <script>
+    // Extracts the word before the current cursor position
+    function previousWord(word, line) {
+      let str = '';
+      for (let i = word.startColumn - 2; i >= 0; i--) {
+        const char = line[i];
+        if (char === ' ' || char === ',' || char === '(' || char === ')') break;
+        str = char + str;
+      }
+      return str.trim();
+    }
+
+    // Parses aliases from the SQL query
+    function parseAliases(sql, schema) {
+      const aliasMap = {};
+      const aliasRegex = /\bFROM\s+(\w+)(?:\s+AS\s+(\w+)|\s+(\w+))?/gi;
+      let match;
+
+      while ((match = aliasRegex.exec(sql)) !== null) {
+        const table = match[1];
+        const alias = match[2] || match[3]; // Alias can be after AS or directly
+        if (schema[table]) {
+          aliasMap[alias || table] = table; // Map alias or table name directly
+        }
+      }
+
+      return aliasMap;
+    }
+
+    // Define schema with tables and columns
+    const schema = {
+      partner: ['id', 'name', 'email', 'phone', 'address', 'partner_type', 'team_id', 'created_at', 'updated_at'],
+      team: ['id', 'name', 'leader_id', 'created_at', 'updated_at'],
+      address: ['id', 'partner_id', 'address', 'city', 'postal_code', 'country', 'created_at', 'updated_at'],
+      shipment: ['id', 'description', 'quantity', 'weight', 'tracking_number', 'state', 'fee', 'customer_id', 'vendor_id']
+    };
+
+    // Monaco Editor Setup
+    require.config({ paths: { 'vs': 'https://cdn.jsdelivr.net/npm/monaco-editor/min/vs' } });
+    require(['vs/editor/editor.main'], function () {
+      var monacoEditor = monaco.editor.create(document.getElementById('monaco-editor'), {
+        value: "SELECT p. FROM partner AS p",
+        language: 'sql',
+        theme: 'vs-dark',
+      });
+
+      // Monaco autocompletion logic
+      monaco.languages.registerCompletionItemProvider('sql', {
+        provideCompletionItems: function (model, position) {
+          const word = model.getWordUntilPosition(position);
+          const lineContent = model.getLineContent(position.lineNumber);
+          const fullQuery = model.getValue();
+          const suggestions = [];
+
+          // Parse aliases from the full query
+          const aliasMap = parseAliases(fullQuery, schema);
+
+          // Get the previous word based on cursor position
+          const previous = previousWord(word, lineContent);
+
+          // Case 1: If previous word doesn't contain a dot '.', suggest tables and aliases
+          if (!previous.includes('.')) {
+            Object.keys(schema).forEach(function (table) {
+              if (table.startsWith(word.word)) {
+                suggestions.push({
+                  label: table,
+                  kind: monaco.languages.CompletionItemKind.Variable,
+                  insertText: table
+                });
+              }
+            });
+
+            // Suggest aliases
+            Object.keys(aliasMap).forEach(function (alias) {
+              if (alias.startsWith(word.word)) {
+                suggestions.push({
+                  label: alias,
+                  kind: monaco.languages.CompletionItemKind.Variable,
+                  insertText: alias
+                });
+              }
+            });
+          } 
+          // Case 2: If previous word contains a dot '.', suggest fields of the table or alias
+          else {
+            const aliasOrTable = previous.split('.')[0]; // Extract alias or table name before the dot
+            const tableName = aliasMap[aliasOrTable] || aliasOrTable; // Resolve alias to table name if needed
+
+            if (schema[tableName]) {
+              schema[tableName].forEach(function (field) {
+                suggestions.push({
+                  label: field,
+                  kind: monaco.languages.CompletionItemKind.Variable,
+                  insertText: field
+                });
+              });
+            }
+          }
+
+          return { suggestions: suggestions };
+        }
+      });
+    });
+  </script>
+
+</body>
+</html>
